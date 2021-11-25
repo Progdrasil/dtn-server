@@ -5,8 +5,8 @@ WORKDIR /build
 RUN go build
 
 FROM alpine
-RUN adduser -S -D -H -h /app appuser
-USER appuser
+RUN apk update && apk upgrade && apk add bash
 COPY --from=builder /build/dtn-server /app/
+COPY wait-for-it.sh /app/
 WORKDIR /app
 CMD ["./dtn-server"]
