@@ -27,6 +27,7 @@ func main() {
 		log.Fatal(err)
 		os.Exit(-1)
 	}
+	log.Println("Connected to " + dbUrl)
 
 	defer db.Close()
 	server := newServer(db)
