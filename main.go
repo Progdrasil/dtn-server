@@ -1,6 +1,9 @@
 package main
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -78,8 +81,42 @@ func newServer(dbUrl string) *Server {
 	}
 }
 
-func (s *Server) getBundles(c *gin.Context) {
+type Json map[string]interface{}
 
+func (a Json) Value() (driver.Value, error) {
+	return json.Marshal(a)
+}
+
+func (a *Json) Scan(value interface{}) error {
+	b, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed")
+	}
+
+	return json.Unmarshal(b, &a)
+}
+
+func (s *Server) getBundles(c *gin.Context) {
+	name := c.Param("name")
+
+	rows, err := s.db.Queryx("SELECT data FROM bundles WHERE name = $1", name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	data := make([]Json, 0, 3)
+
+	for rows.Next() {
+		row := make(Json)
+		err := rows.Scan(&row)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		data = append(data, row)
+	}
+
+	c.JSON(http.StatusOK, data)
 }
 
 func (s *Server) createBundle(c *gin.Context) {
@@ -87,10 +124,21 @@ func (s *Server) createBundle(c *gin.Context) {
 	data := make(map[string]interface{})
 	if err := c.ShouldBindJSON(&data); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	strData, _ := json.Marshal(data)
+
+	var id int
+	err := s.db.Get(&id, `INSERT INTO bundles(name, data) VALUES ($1, $2) RETURNING id`, name, strData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"name": name,
 		"data": data,
+		"id":   id,
 	})
 }
